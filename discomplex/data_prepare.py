@@ -1,21 +1,44 @@
 import os
 import pandas as pd
 
-RAW_DIR = 'data/raw'
+# Define PROJECT_HOME as two levels up from the current script
+PROJECT_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW_DIR = f'{PROJECT_HOME}data/raw'
 
 FILENAMES_RAW = {
     'complexportal':'idmapping_ComplexPortal_slim.tsv',
     'pdb':'idmapping_PDB.tsv',
     'disprot':'idmapping_disprot.tsv'
 }
-PARAMS = {
 
-}
-tables = {
-
-}
 
 def process_data(raw_names:dict=FILENAMES_RAW ):
+    """Processes data from specified raw data files.
+
+    This function reads data from a set of predefined files (or those provided in the
+    `raw_names` dictionary). These files are expected to contain mappings between different
+    identifiers like UniProt and DisProt IDs. It then identifies associations between
+    these identifiers within protein complexes.
+
+    Args:
+        raw_names: A dictionary where keys are directory names and values are file names.
+                   These files should be tab-separated and contain identifier mappings.
+                   Default is FILENAMES_RAW, a predefined dictionary.
+
+    Returns:
+        A pandas DataFrame containing columns for complex IDs, paired UniProt IDs,
+        corresponding DisProt IDs, and associated UniProt IDs for each complex.
+        The DataFrame is structured with columns: 'complex', 'uniprot1', 'disprot1',
+        and 'uniprot2'.
+
+    Raises:
+        AssertionError: If the specified directories or files do not exist.
+
+    Note:
+        The function assumes the existence of specific directories and files as defined in RAW_DIR
+        and FILENAMES_RAW. It also assumes a specific file format and structure for the input data.
+    """
+    tables = {}
     for d in raw_names.keys():
         indir = os.path.join(RAW_DIR, d)
         assert os.path.exists(indir)
@@ -50,6 +73,28 @@ def process_data(raw_names:dict=FILENAMES_RAW ):
                 print("Working on complex", cpid,unip,f'({dpid})', unip2)
                 dlist.append({'complex':cpid,'uniprot1':unip,'disprot1':dpid, 'uniprot2': unip2})
     return pd.DataFrame(dlist)
+
+
+def download_data(
+    uniprot_fasta_url=\
+    'ftp://ftp.ebi.ac.uk/pub/databases/uniprot/knowledgebase/uniprot_sprot.fasta.gz',
+    target_dir = RAW_DIR):
+    '''
+    Download standard data files (in this case UniProt/SwissProt protein sequences)
+    and store them under data/raw
+    '''
+    # Create target directory if it doesn't exist
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir)
+    # Extract the filename from the URL
+    file_name = uniprot_fasta_url.split('/')[-1]
+    # Full path for the downloaded file
+    file_path = os.path.join(target_dir, file_name)
+    # Downloading the file from `uniprot_fasta_url`
+    print(f"Downloading {file_name} to {file_path}")
+    urllib.request.urlretrieve(uniprot_fasta_url, file_path)
+    print(f"Download complete: {file_path}")
+
 
 if __name__ == '__main__':
     df = process_data()
