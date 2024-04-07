@@ -1,6 +1,7 @@
-# Protein Analysis and Folding Prediction Toolkit
+# Evaluating Folding of Protein Dimers
 
 This toolkit provides utilities for loading protein sequences, predicting protein folding structures using the ESMfold method via the bioml.ai API, and analyzing PDB structures for protein-protein interactions.
+Disclaimer: This implementation is NOT finished!
 
 ## Dependencies
 
