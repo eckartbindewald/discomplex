@@ -5,6 +5,7 @@ import urllib.request
 # Define PROJECT_HOME as two levels up from the current script
 PROJECT_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = f'{PROJECT_HOME}/data/raw'
+INTERIM_DIR = f'{PROJECT_HOME}/data/interim'
 
 FILENAMES_RAW = {
     'complexportal':'idmapping_ComplexPortal.tsv',
@@ -44,7 +45,10 @@ def process_data(raw_names:dict=FILENAMES_RAW ):
         indir = os.path.join(RAW_DIR, d)
         infile = os.path.join(indir, raw_names[d])
         print("Data input file:", infile)
-        assert os.path.exists(indir)
+        if not os.path.exists(indir):
+            raise FileNotFoundError("Could not find directory", indir)
+        if not os.path.exists(infile):
+            raise FileNotFoundError("Could not find file", infile)
         assert os.path.exists(infile)
         
         tables[d] = pd.read_csv(infile, sep='\t', header=None)
@@ -100,12 +104,14 @@ def download_data(
 
 if __name__ == '__main__':
     df = process_data()
-    outfile = 'data/intermediate/ppi_verified.tsv'
+    if not os.path.exists(INTERIM_DIR):
+        os.makedirs(INTERIM_DIR)
+    outfile = f'{INTERIM_DIR}/ppi_verified.tsv'
     print("Writing", len(df), "rows to output file", outfile)
     df.to_csv(outfile, sep='\t')
     ids = df['uniprot1'].unique().tolist()
     ids_str= '\n'.join(ids) + '\n'
-    outfile = 'data/intermediate/disprot_unitprot_ids.txt'
+    outfile = f'{INTERIM_DIR}/disprot_unitprot_ids.txt'
     print("writing",len(ids), 'uniprot ids supported by ComplexPortal and Disprot to', outfile)
     with open(outfile, 'w') as f:
         f.write(ids_str)

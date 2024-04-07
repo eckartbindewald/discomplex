@@ -8,6 +8,12 @@ import sys
 import io
 import os
 
+# Define PROJECT_HOME as two levels up from the current script
+PROJECT_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW_DIR = f'{PROJECT_HOME}/data/raw'
+INTERIM_DIR = f'{PROJECT_HOME}/data/interim'
+PROCESSED_DIR = f'{PROJECT_HOME}/data/processed'
+
 def load_fasta_sequences(fasta_file):
     """
     This function reads a FASTA formatted file and returns a dictionary
@@ -135,10 +141,10 @@ def find_interacting_residues(pdb_filename, cutoff=8.0,
     return regions
 
 
-def main(result_file = 'data/intermediate/ppi_verified.tsv',
+def main(result_file = f'{INTERIM_DIR}/ppi_verified.tsv',
         sequence_file = 'data/raw/uniprot/uniprot_sprot.fasta.gz',
         pdb_out_dir = "pdb_out",
-        binding_output_file='binding_predictions_tmp.tsv',
+        binding_output_file=f'{PROCESSED_DIR}/binding_predictions_tmp.tsv',
         n=10,
         folding_method='esm'):
     if not os.path.exists(pdb_out_dir):
@@ -183,6 +189,8 @@ def main(result_file = 'data/intermediate/ppi_verified.tsv',
             else:
                 print("Id pair", id1, id2, 'No PPi structure prediction obtained! not both in verified part of Uniprot/Swissprot!')
     region_results = pd.DataFrame(data={'id1':ids1,'id2':ids2, 'binding_start':binding_starts, 'binding_end':binding_ends})
+    if not os.path.exists(os.path.dirname(binding_output_file)):
+        os.makedirs(os.path.dirname(binding_output_file)) # create needed directory
     print("Writing predicted regions to file", binding_output_file)
     region_results.to_csv(binding_output_file, sep='\t')
 
