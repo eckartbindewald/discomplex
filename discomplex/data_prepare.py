@@ -82,24 +82,27 @@ def process_data(raw_names:dict=FILENAMES_RAW ):
 
 
 def download_data(
-    uniprot_fasta_url=\
-    'ftp://ftp.ebi.ac.uk/pub/databases/uniprot/knowledgebase/uniprot_sprot.fasta.gz',
-    target_dir = os.path.join(RAW_DIR, 'uniprot')):
+    remote_urls=[
+    ('uniprot','ftp://ftp.ebi.ac.uk/pub/databases/uniprot/knowledgebase/uniprot_sprot.fasta.gz','niprot_sprot.fasta.gz'),
+    ('disprot', 'https://disprot.org/api/search?release=2023_12&show_ambiguous=false&show_obsolete=false&format=tsv&namespace=all&get_consensus=false','disprot_2023-12.tsv'),
+    ],
+    raw_dir = RAW_DIR):
     '''
     Download standard data files (in this case UniProt/SwissProt protein sequences)
     and store them under data/raw
     '''
-    # Create target directory if it doesn't exist
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
-    # Extract the filename from the URL
-    file_name = uniprot_fasta_url.split('/')[-1]
-    # Full path for the downloaded file
-    file_path = os.path.join(target_dir, file_name)
-    # Downloading the file from `uniprot_fasta_url`
-    print(f"Downloading {file_name} to {file_path}")
-    urllib.request.urlretrieve(uniprot_fasta_url, file_path)
-    print(f"Download complete: {file_path}")
+    for i in range(len(remote_urls)):
+        # Create target directory if it doesn't exist
+        domain, url, file_name = remote_urls[i]
+        target_dir = os.path.join(raw_dir, domain)
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+        # Full path for the downloaded file
+        file_path = os.path.join(target_dir, file_name)
+        # Downloading the file from `uniprot_fasta_url`
+        print(f"Downloading {file_name} to {file_path}")
+        urllib.request.urlretrieve(url, file_path)
+        print(f"Download complete: {file_path}")
 
 
 if __name__ == '__main__':
