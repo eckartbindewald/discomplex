@@ -1,12 +1,13 @@
 import os
 import pandas as pd
+import urllib.request
 
 # Define PROJECT_HOME as two levels up from the current script
 PROJECT_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW_DIR = f'{PROJECT_HOME}data/raw'
+RAW_DIR = f'{PROJECT_HOME}/data/raw'
 
 FILENAMES_RAW = {
-    'complexportal':'idmapping_ComplexPortal_slim.tsv',
+    'complexportal':'idmapping_ComplexPortal.tsv',
     'pdb':'idmapping_PDB.tsv',
     'disprot':'idmapping_disprot.tsv'
 }
@@ -41,9 +42,10 @@ def process_data(raw_names:dict=FILENAMES_RAW ):
     tables = {}
     for d in raw_names.keys():
         indir = os.path.join(RAW_DIR, d)
-        assert os.path.exists(indir)
         infile = os.path.join(indir, raw_names[d])
+        print("Data input file:", infile)
         assert os.path.exists(indir)
+        assert os.path.exists(infile)
         
         tables[d] = pd.read_csv(infile, sep='\t', header=None)
         if tables[d].shape[1] == 3:
@@ -78,7 +80,7 @@ def process_data(raw_names:dict=FILENAMES_RAW ):
 def download_data(
     uniprot_fasta_url=\
     'ftp://ftp.ebi.ac.uk/pub/databases/uniprot/knowledgebase/uniprot_sprot.fasta.gz',
-    target_dir = RAW_DIR):
+    target_dir = os.path.join(RAW_DIR, 'uniprot')):
     '''
     Download standard data files (in this case UniProt/SwissProt protein sequences)
     and store them under data/raw
@@ -107,4 +109,5 @@ if __name__ == '__main__':
     print("writing",len(ids), 'uniprot ids supported by ComplexPortal and Disprot to', outfile)
     with open(outfile, 'w') as f:
         f.write(ids_str)
+    download_data()
     

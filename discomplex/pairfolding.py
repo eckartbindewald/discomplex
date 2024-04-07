@@ -136,7 +136,7 @@ def find_interacting_residues(pdb_filename, cutoff=8.0,
 
 
 def main(result_file = 'data/intermediate/ppi_verified.tsv',
-        sequence_file = 'data/raw/uniprot_sprot.fasta.gz',
+        sequence_file = 'data/raw/uniprot/uniprot_sprot.fasta.gz',
         pdb_out_dir = "pdb_out",
         binding_output_file='binding_predictions_tmp.tsv',
         n=10,
