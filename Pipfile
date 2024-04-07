@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 biolmai = "*"
 biopython = "*"
+pandas = "*"
 
 [dev-packages]
 
