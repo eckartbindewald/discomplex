@@ -32,6 +32,31 @@ Ensure your protein sequence data is in FASTA format. If your FASTA file is gzip
 
 ## Usage
 
+The idea is to run two scripts: i) data preparation with data_prepare.py and actual model application for predicting sites with pairfolding.py. The scripts should be run with `pipenv` instead of directly.
+
+### Preparing data
+
+Again, as preliminary create the virtual environment and install needed packages with following 2 lines of code:
+
+```
+# cd to project home directory
+pip install pipenv
+pipenv install
+```
+
+Actually running the script that prepares input data:
+
+```
+# current working directory is project home
+pipenv run python discomplex/data_prepare.py
+```
+
+### Perfomring predictions
+
+```
+pipenv run python discomplex/pairfolding.py 
+```
+
 ### Loading Protein Sequences
 
 Use the `load_fasta_sequences` function from the main script to load sequences from a FASTA file. The sequences are returned as a dictionary indexed by UniProt ID.
