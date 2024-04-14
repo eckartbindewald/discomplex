@@ -142,8 +142,8 @@ def find_interacting_residues(pdb_filename, cutoff=8.0,
 
 
 def main(result_file = f'{INTERIM_DIR}/ppi_verified.tsv',
-        sequence_file = 'data/raw/uniprot/uniprot_sprot.fasta.gz',
-        pdb_out_dir = "pdb_out",
+        sequence_file = f'{RAW_DIR}/uniprot/uniprot_sprot.fasta.gz',
+        pdb_out_dir = f"{PROCESSED_DIR}/pdb_out",
         binding_output_file=f'{PROCESSED_DIR}/binding_predictions_tmp.tsv',
         n=10,
         folding_method='esm',
@@ -202,4 +202,4 @@ def main(result_file = f'{INTERIM_DIR}/ppi_verified.tsv',
     region_results.to_csv(binding_output_file, sep='\t')
 
 if __name__ == '__main__':
-    main(n=1000)
+    main(n=10)
