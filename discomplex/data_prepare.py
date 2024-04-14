@@ -83,7 +83,7 @@ def process_data(raw_names:dict=FILENAMES_RAW ):
 
 def download_data(
     remote_urls=[
-    ('uniprot','ftp://ftp.ebi.ac.uk/pub/databases/uniprot/knowledgebase/uniprot_sprot.fasta.gz','niprot_sprot.fasta.gz'),
+    ('uniprot','ftp://ftp.ebi.ac.uk/pub/databases/uniprot/knowledgebase/uniprot_sprot.fasta.gz','uniprot_sprot.fasta.gz'),
     ('disprot', 'https://disprot.org/api/search?release=2023_12&show_ambiguous=false&show_obsolete=false&format=tsv&namespace=all&get_consensus=false','disprot_2023-12.tsv'),
     ],
     raw_dir = RAW_DIR):
