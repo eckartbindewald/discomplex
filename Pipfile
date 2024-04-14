@@ -8,6 +8,7 @@ pandas = "*"
 biopython = "*"
 biolmai = "*"
 python-dotenv = "*"
+discomplex = {file = "."}
 
 [dev-packages]
 
