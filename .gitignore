@@ -9,6 +9,16 @@ __pycache__/
 .Python
 env/
 build/
+
+# in-house addition - models should be in the downloads section
+models/
+
+# in-house addition - anything that can be re-generated should not be part of version control:
+tables/
+
+# similar with data-raw
+data-raw/
+
 develop-eggs/
 dist/
 downloads/
