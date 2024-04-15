@@ -9,6 +9,11 @@ biopython = "*"
 biolmai = "*"
 python-dotenv = "*"
 discomplex = {file = "."}
+matplotlib = "*"
+seaborn = "*"
+freesasa = "*"
+scikit-learn = "*"
+tensorflow = "*"
 
 [dev-packages]
 
