@@ -26,11 +26,16 @@ INTERIM_DIR = f'{PROJECT_HOME}/data/interim'
 PROCESSED_DIR = f'{PROJECT_HOME}/data/processed'
 
 
-def protein_embed_esm(sequence, model_slug = 'esm2-650m',
+def protein_embed_esm(sequence,
+    token_mode="per_token",
+    model_slug = 'esm2-650m',
     base_url='https://biolm.ai/api/v2'):
     """
     Compute per-residue embeddings using a variant of the ESM-2
     model.
+
+    Args:
+        token_mode(str): either "per token" or "mean"
     """    
     url = f"{base_url}/{model_slug}/encode/"
 
@@ -42,10 +47,10 @@ def protein_embed_esm(sequence, model_slug = 'esm2-650m',
     data = {
         "params": {
             "include": [
-                "per_token", # was 'mean'
-                "contacts",
-                "logits",
-                "attentions"
+                token_mode, # "per_token" or  'mean'
+                # "contacts",
+                # "logits",
+                # "attentions"
             ]
         },
         "items": [
@@ -105,7 +110,9 @@ def protein_embed_esm(sequence, model_slug = 'esm2-650m',
     #     return {'pdb_text':pdb, 'response':resp}
 
 
-def protein_embed(sequence, model = {
+def protein_embed(sequence,
+    token_mode="per_token",
+    model = {
     'name':'esm2-650m', 'family':'esm'}):
     """
     Wrapper function for potentially different methods beyond ESM
@@ -114,15 +121,22 @@ def protein_embed(sequence, model = {
     """
     if 'family' not in model or model['family'] != 'esm':
         raise ValueError("Currently only method 'esm' is supported model family, but found " + model)
-    return protein_embed_esm(sequence, model_slug=model['name'])
+    return protein_embed_esm(sequence, token_mode=token_mode, model_slug=model['name'])
     
 
 
 def run_embed_loop(
         accessions,
-        table_gt,
         sequence_dictionary,
+        table_gt=None,
+        id_col="acc", # column with ID in table table_gt
         n=1,
+        seq_len_max=400,
+        token_mode="per_token",
+        representation_keys = { # needed for API
+            'per_token':'representations',
+            'mean':'mean_representations'
+        },
         model = {
             'name':'esm2-650m',
             'family':'esm',
@@ -131,33 +145,43 @@ def run_embed_loop(
         },
         retry_max=3,
         wait_per_iteration=10.0):
+    if token_mode not in representation_keys:
+        raise ValueError("internal error: token_mode must be in representation_keys")
     if n <= 0:
         n = len(accessions)
     else:
         n = min(n, len(accessions))
     groundtruth_all = [] # list over all positions of all proteins visited in order
     embedding_vecs = [] # list over all embedding vectors for all positions of all visited proteins
+    used_accessions = []
+    used_sequences = []
     for i in range(n):
         acc = accessions[i]
-        print("Working on row", i, )
+        print(f"Working on accession {acc} that is row {i+1} out of {n} ({round(100*i/n,1)}% )")
         assert acc in sequence_dictionary
         seq = str(sequence_dictionary[acc].seq)
         seq_len = len(seq)
+        if seq_len > seq_len_max:
+            print(f"Sequence length of {acc} exceedes maximum: {seq_len} > {seq_len_max}")
+            continue
         # get all disordered region for this protein chain:
-        ref_regions = table_gt[table_gt['acc']== acc].reset_index(drop=True)
-        groundtruth_vec = np.zeros([seq_len])
-        # we are now defining an outcome vector for binary classification:
-        print(ref_regions.head().to_string())
-        for j in range(len(ref_regions)):
-            start = ref_regions.at[j, 'start'] - 1 # back to 0-based counting for start
-            assert start >= 0
-            stop = ref_regions.at[j, 'end']
-            assert stop <= seq_len
-            groundtruth_vec[start:stop]=1.0
+        groundtruth_vec = None
+        if table_gt is not None:
+            ref_regions = table_gt[table_gt[id_col]== acc].reset_index(drop=True)
+            groundtruth_vec = np.zeros([seq_len])
+            # we are now defining an outcome vector for binary classification:
+            print(ref_regions.head().to_string())
+            for j in range(len(ref_regions)):
+                start = ref_regions.at[j, 'start'] - 1 # back to 0-based counting for start
+                assert start >= 0
+                stop = ref_regions.at[j, 'end']
+                assert stop <= seq_len
+                groundtruth_vec[start:stop]=1.0
         success = False
         for retry in range(retry_max):
             try:
-                embedding_results = protein_embed(seq, model=model)
+                embedding_results = protein_embed(seq, token_mode=token_mode, model=model)
+                # print(embedding_results) # complete output - for debugging
                 success = True
                 break
             except Exception as e:
@@ -168,20 +192,41 @@ def run_embed_loop(
             print(f"Warning: could not generate results for row {i}: {acc}")
             continue
         print(embedding_results.keys())
-        if not isinstance(embedding_results, dict) or 'representations' not in embedding_results:
-            raise("Strange, no embeddings defined")
-        embeddings = embedding_results['representations']
+        representation_key = representation_keys[token_mode]
+        if not isinstance(embedding_results, dict) or representation_key not in embedding_results:
+            print(f"Strange, no embeddings defined for accession {acc}")
+            print(embedding_results)
+            print(embedding_results.keys())
+            assert False
+            continue
+        embeddings = embedding_results[representation_key]
         if isinstance(embeddings, dict) and len(embeddings) == 1:
             _embed_keys = list(embeddings.keys()) # name of neural network layer like '33' as string
             embeddings = embeddings[_embed_keys[0]]
-        if len(embeddings) != seq_len or not isinstance(embeddings, list):
-            raise("Inconsistent number of embeddings vectors, expected a lists os lists so that there is one embedding vector per residue")
-        for pos in range(len(embeddings)):
-            embedding_vecs.append(embeddings[pos])
-        groundtruth_all.extend(groundtruth_vec)
-        assert len(embedding_vecs) == len(groundtruth_all), f'The length of the ground-truth vector and the number of embedding vectors did not match for {acc}'
+        # if len(embeddings) != seq_len or not isinstance(embeddings, list):
+        #    raise("Inconsistent number of embeddings vectors, expected a lists os lists so that there is one embedding vector per residue")
+        print("found embeddings:", type(embeddings), len(embeddings), type(embeddings[0]))
+        if isinstance(embeddings[0], list):
+            print("length of individual lists:", len(embeddings[0]))
+        # print(embeddings)
+        if isinstance(embeddings[0], list):
+            for pos in range(len(embeddings)):
+                embedding_vecs.append(embeddings[pos])
+            if groundtruth_vec is not None:
+                groundtruth_all.extend(groundtruth_vec)
+        else:
+            print("appending averaged embedding vector without per-position ground truth")
+            embedding_vecs.append(embeddings)
+        used_accessions.append({
+            'accession':acc,
+            'length':seq_len,
+        })
+        used_sequences.append(seq)
+        if table_gt is not None and len(embedding_vecs) != len(groundtruth_all):
+            print('Warning: The length of the ground-truth vector and the number of embedding vectors did not match for {acc}')
+
         time.sleep(wait_per_iteration)
-    return {'embeddings':embedding_vecs, 'groundtruth':groundtruth_all}
+    return {'accessions':used_accessions, 'sequences':used_sequences, 'embeddings':embedding_vecs, 'groundtruth':groundtruth_all}
 
 
 def main(groundtruth_file = f'{RAW_DIR}/disprot/disprot_2023-12.tsv',
@@ -193,6 +238,7 @@ def main(groundtruth_file = f'{RAW_DIR}/disprot/disprot_2023-12.tsv',
             'family':'esm',
             'dim':1280
         },
+        token_mode="per_token",
         random_state=42 ):
     if not os.path.exists(groundtruth_file):
         raise FileNotFoundError("Could not find reference file with ground-truth from disprot: " + groundtruth_file)
@@ -214,6 +260,7 @@ def main(groundtruth_file = f'{RAW_DIR}/disprot/disprot_2023-12.tsv',
     results = run_embed_loop(
         accessions = acc_common,
         table_gt=tbl_gt,
+        token_mode=token_mode,
         sequence_dictionary=sequence_dictionary,
         n=n,
         model=model)

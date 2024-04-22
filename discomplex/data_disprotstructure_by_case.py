@@ -25,11 +25,20 @@ from params import aa_encoding
 PROJECT_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = f'{PROJECT_HOME}/data/raw'
 INTERIM_DIR = f'{PROJECT_HOME}/data/interim'
-PROCESSED_DIR = f'{PROJECT_HOME}/data/processed/disorder'
-# TABLE_DIR = f'{PROJECT_HOME}/tables/disorder'
-PROTEIN_DOWNLOAD_LIMIT = 100000
+PROCESSED_DIR = f'{PROJECT_HOME}/data/processed'
+TABLE_DIR = f'{PROJECT_HOME}/tables/disorder'
+PROTEIN_DOWNLOAD_LIMIT = 10000
 STRIDE = "bin/stride"
-DIGITS=5
+
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+def prepare_data_for_per_position_classification(df, sequence_id_col):
+    grouped = df.groupby(sequence_id_col)
+    max_length = grouped.size().max()  # Find the maximum sequence length for padding
+
+    sequences = []
+    labels = []
+
 
 # def extract_sasa(residue_areas):
 #     sasa_data = {}
@@ -63,7 +72,7 @@ def run_disprot_structure(disprot23,
     area_scale = 0.01,
     angle_scale = 0.01, # angles between -1.8 and + 1.8 instead of the pi stuff :-)
     URL_BASE = "https://alphafold.ebi.ac.uk/files/",
-    scratchdir=os.path.join(INTERIM_DIR, 'afdb'),
+    scratchdir=os.path.join(PROJECT_HOME, 'data-raw/afdb'),
     verbose=True):
 
     # scratchdir = os.path.join(PROJECT_HOME, 'data-raw/afdb')
@@ -77,11 +86,7 @@ def run_disprot_structure(disprot23,
     # Initialize a list to store data dictionaries
     data_list = []
     # Accession codes (unique IDs)
-    accessions = sorted(disprot23['acc'].unique())
-    
-    if len(accessions) > PROTEIN_DOWNLOAD_LIMIT:
-        print(f"Clipping maximum number of accession codes from {len(accessions)} to ", PROTEIN_DOWNLOAD_LIMIT)
-        accessions = accessions[:PROTEIN_DOWNLOAD_LIMIT]
+    accessions = sorted(disprot23['acc'].unique())[:PROTEIN_DOWNLOAD_LIMIT]
     used_accessions = []
     # Main loop for downloading and analyzing protein structures
     protein_count = 0
@@ -91,27 +96,24 @@ def run_disprot_structure(disprot23,
         acc = accessions[acc_iter]
         dest_name = f"AF-{acc}-F1-model.pdb"
         destfile = os.path.join(scratchdir, dest_name)
-        print(f"Working on accession code {acc} : {acc_iter} out of {n} proteins")
+        print(f"Working on accession code {acc}")
         if not os.path.exists(destfile):
             if no_download:
-                print(f"deactivated download, have to skip {acc}")
                 continue
             for version in [4,3,2,1]:
                 fname = f"AF-{acc}-F1-model_v{version}.pdb"
                 url = f"{URL_BASE}{fname}"
+                
                 response = requests.get(url)
                 if response.status_code == 200:
                     with open(destfile, 'wb') as f:
                         f.write(response.content)
-                    print(f"Successfully downloaded {acc} from {url} and saved to {destfile}!")
-                    if not os.path.exists(destfile):
-                        raise FileNotFoundError('Strange, file should have been written to ' + destfile)
+                    print(f"Successfully downloaded {acc} from {url} and saved to {destfile}...")
+                    assert os.path.exists(destfile), 'Strange, file should have been written to ' + destfile
                     break # success, no need to try further
             if not os.path.exists(destfile):
                 print(f"Failed to download {acc}")
                 continue
-        else:
-            print("Using cached structure at", destfile)
 
         # Read PDB file
         parser = PDBParser()
@@ -212,17 +214,17 @@ def run_disprot_structure(disprot23,
                                     'aromaticity':aromaticity,
                                     'Confidence': b_factor/100,
                                     'ResNo': residue_id/100,
-                                    'RelResNo':round(rel_residue_id, DIGITS),
-                                    'lgResNo':round(log_residue_id,DIGITS),
-                                    'lgRevResNo':round(log_rev_residue_id, DIGITS),
-                                    'Phi':round(r['Phi']*angle_scale, DIGITS),
-                                    'Psi':round(r['Psi']*angle_scale, DIGITS),
+                                    'RelResNo':rel_residue_id,
+                                    'lgResNo':log_residue_id,
+                                    'lgRevResNo':log_rev_residue_id,
+                                    'Phi':r['Phi']*angle_scale,
+                                    'Psi':r['Psi']*angle_scale,
                                     'SecStruct':r['StructCode'],
                                     # 'Polar':polar, 'RelPolar':rel_polar,
                                     # 'Apolar':apolar, 'RelApolar':rel_apolar,
                                     # 'MainChain':main_chain, 'RelMainChain':rel_main_chain,
                                     # 'SideChain':side_chain, 'RelSideChain':rel_side_chain,
-                                    'TotalArea':round(r['Area']*area_scale, DIGITS),
+                                    'TotalArea':r['Area']*area_scale,
                                     'structured': structured
                                     })
                         else:
@@ -277,99 +279,33 @@ def plot_heatmap(correlation_matrix):
 
 def main(disprot_file=f'{RAW_DIR}/disprot/disprot_2023-12.tsv',
     n=-1,
-    show=False, allowed_regions=['flexible linker/spacer',
-    'molecular adaptor activity', 'molecular function regulator',
-    'phosphorylation display site',
-    'lipid binding','ion binding',
-    'pre-molten globule','nucleic acid binding',
-    'disorder', 'protein binding', 'disorder to order'],
-    accession_col='acc',
-    random_state=42,
-    train_frac=0.8,
-    count_test_region_min=5,
-    no_download=False,
-    verbose=False): # 
-    """
-    Overall counts from original disprot data:
-    disorder 6292
-    protein binding 1413
-    disorder to order 738
-    flexible linker/spacer 377
-    molecular adaptor activity 271
-    molecular function regulator 205
-    phosphorylation display site 170
-    lipid binding 99
-    ion binding 90
-    pre-molten globule 82
-    nucleic acid binding 80
-    molecular condensate scaffold activity 77
-    DNA binding 75
-    molecular function inhibitor activity 71
-    molecular function activator activity 70
-    order to disorder 69
-    amyloid fibril formation 65
-    RNA binding 60
-    """
-    disprot_orig = pd.read_csv(disprot_file, sep='\t')
-    print(disprot_orig.columns)
-    disprot_orig = disprot_orig.sample(frac=1, replace=False, random_state=random_state)
-    assert isinstance(disprot_orig, pd.DataFrame)
-    if n > 0 and n < len(disprot_orig):
-        print("Truncating reference file from", len(disprot_orig), 'to', n, 'data rows.')
-        disprot_orig = disprot_orig.head(n=n)
-    accessions_uniq = disprot_orig[accession_col].unique()
-    
-    print(accessions_uniq)
-    n_acc = len(accessions_uniq)
-    n_acc_train = round(train_frac * n_acc)
-    accessions_uniq_train = accessions_uniq[:n_acc_train]
-    accessions_uniq_test = accessions_uniq[n_acc_train:]
-    print("number of accession codes (total, train, test):", n_acc, n_acc_train)
-    disprot_orig_train = disprot_orig[disprot_orig[accession_col].isin(accessions_uniq_train)]
-    disprot_orig_test = disprot_orig[disprot_orig[accession_col].isin(accessions_uniq_test)]
-    print(disprot_orig['term_name'].value_counts().to_string())
-    for allowed_region in allowed_regions:
-        allowed_region_name = allowed_region.replace("/", "_").replace(" ", "_")
-        disprot23_train = disprot_orig_train[disprot_orig_train['term_name'].isin([allowed_region])].sort_values(by=[accession_col]).reset_index(drop=True)
-        disprot23_test = disprot_orig_test[disprot_orig_test['term_name'].isin([allowed_region])].sort_values(by=[accession_col]).reset_index(drop=True)
-        if len(disprot23_test) < count_test_region_min:
-            print("Insufficient number of test cases for region", allowed_region, ":", len(disprot23_test))
-            continue
-        outfile_train = os.path.join(PROCESSED_DIR, f'disorder_{allowed_region_name}_{len(disprot23_train)}_{len(disprot23_test)}_train.tsv')
-        outfile_test = os.path.join(PROCESSED_DIR, f'disorder_{allowed_region_name}_{len(disprot23_train)}_{len(disprot23_test)}_test.tsv')
-        if os.path.exists(outfile_train) and os.path.exists(outfile_test):
-            print("Both train and test data files already exists, skipping:")
-            print(outfile_train)
-            print(outfile_test)
-            continue
-        print("Working on region", allowed_region, outfile_train, outfile_test, '...')
-        results_train = run_disprot_structure(disprot23_train, n=n, no_download=no_download, verbose=verbose)
-        results_test = run_disprot_structure(disprot23_test, n=n, no_download=no_download, verbose=verbose)
-        disorder_train = results_train['disorder']
-        disorder_test = results_test['disorder']
-        print("keys from results_train:", list(results_train.keys()))
-        # protein_count = len(results_train["accessions"])
-        if not os.path.exists(PROCESSED_DIR):
-            print("Creating output directory for processed train&test data:", PROCESSED_DIR)
-            os.makedirs(PROCESSED_DIR)
-
-        print("Writing to output file", outfile_train, outfile_test)
-        disorder_train.to_csv(outfile_train, sep='\t')
-        disorder_test.to_csv(outfile_test, sep='\t')
-        
-        numeric_df = disorder_train.select_dtypes(include=[np.number])
-        # corr_mtx = numeric_df.corr()
-    # if show:
-    #     plot_heatmap(corr_mtx)
-    #     plot_violin(disorder)
-        # plot_structure_features(disorder,x='Polar', y='Confidence')
-        # plot_structure_features(disorder,x='Apolar', y='Confidence')
-        # plot_structure_features(disorder,x='Polar', y='Apolar')
-        # plot_structure_features(disorder,x='Total', y='Confidence')
-        # plot_structure_features(disorder,x='RelPolar', y='Confidence')
-        # plot_structure_features(disorder,x='RelApolar', y='Confidence')
-        # plot_structure_features(disorder,x='RelPolar', y='RelApolar')
-        # plot_structure_features(disorder,x='RelTotal', y='Confidence')
+    show=False, allowed_regions=['disorder']):
+    disprot23 = pd.read_csv(disprot_file, sep='\t')  # Assuming data in CSV for this example
+    print(disprot23.columns)
+    print(disprot23['term_name'].value_counts())
+    disprot23 = disprot23[disprot23['term_name'].isin(allowed_regions)].reset_index(drop=True)
+    results = run_disprot_structure(disprot23, n=n)
+    disorder = results['disorder']
+    protein_count = len(results['accessions'])
+    if not os.path.exists(TABLE_DIR):
+        print("Creating output directory for table data:", TABLE_DIR)
+        os.makedirs(TABLE_DIR)
+    outfile = os.path.join(TABLE_DIR, f'disorder_{protein_count}.tsv')
+    print("Writing to output file", outfile)
+    disorder.to_csv(outfile, sep='\t')
+    numeric_df = disorder.select_dtypes(include=[np.number])
+    corr_mtx = numeric_df.corr()
+    if show:
+        plot_heatmap(corr_mtx)
+        plot_violin(disorder)
+        plot_structure_features(disorder,x='Polar', y='Confidence')
+        plot_structure_features(disorder,x='Apolar', y='Confidence')
+        plot_structure_features(disorder,x='Polar', y='Apolar')
+        plot_structure_features(disorder,x='Total', y='Confidence')
+        plot_structure_features(disorder,x='RelPolar', y='Confidence')
+        plot_structure_features(disorder,x='RelApolar', y='Confidence')
+        plot_structure_features(disorder,x='RelPolar', y='RelApolar')
+        plot_structure_features(disorder,x='RelTotal', y='Confidence')
 
 if __name__ == '__main__':
-    main(n=-1, no_download=False)
+    main(n=100)

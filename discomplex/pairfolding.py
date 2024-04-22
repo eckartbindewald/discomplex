@@ -22,6 +22,10 @@ def load_fasta_sequences(fasta_file):
     This function reads a FASTA formatted file and returns a dictionary
     It assumes that the second field in terms of separator '|' is a unique
     accession code that is used as key in the returned dictionary
+
+    Example:
+    sq = load_fasta_sequences(filename)
+    sq['P12452'] # gets sequence of tht Uniprot id
     """
     sequences = {}
     
@@ -234,9 +238,9 @@ def fold_single_chain(ids,
         ref_sequences = load_fasta_sequences(ref_sequences)
     n = len(ids)
     ids = list(ids)
-    binding_starts = []
-    binding_ends = []
-    ids1 = []
+    # binding_starts = []
+    # binding_ends = []
+    # ids1 = []
     folded_paths=[]
     for i in range(n):
         id1 = ids[i]
