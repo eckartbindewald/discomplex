@@ -50,7 +50,13 @@ Actually running the script that prepares input data:
 ```
 # current working directory is project home
 pipenv run python discomplex/data_prepare.py
+
+# prepare data for ML model of disordered regions
+pipenv run python discomplex/data_disprotstructure.py
 ```
+
+
+
 
 ### Perfomring predictions
 
