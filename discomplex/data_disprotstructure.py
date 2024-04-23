@@ -57,12 +57,171 @@ def regions_to_residues(starts, ends):
         result.extend(range(start, end + 1))
     return result
 
+
+def structure_to_features(structure, secstruct:pd.DataFrame,
+    disprot:pd.DataFrame=None, verbose=True):
+    """
+    Computes features for disorder prediction for a given
+    PDB structure
+    structure: PDB structure of single-chain protein as parsed by BioPython
+    secstructure: DataFrame in inhouse format as geerated by run_stride(pdbfile, 'stride')
+    disprot(pd.DataFrame): DataFrame corresponding to reference ground truth
+        data, with columns as provided by the Disprot database.
+    """
+    # mda_u = mda.Universe(destfile)
+    # sse = secondary_structure.SegmentSecondaryStructure.Universe(mda_u)
+    # psn = core.PSN("matrix.dat", mda_u)
+    # print(psn)
+    
+    print(secstruct.head())
+    if 'chain' not in secstruct.columns:
+        raise Exception("Strange input format:", type(secstruct), str(secstruct))
+    pdb_chain_names = secstruct['Chain'].unique()
+    if verbose:
+        print("PDB Chain names:", pdb_chain_names)
+    assert isinstance(secstruct, pd.DataFrame), 'Expected data frame but got ' + str(secstruct) 
+    assert len(secstruct) > 0
+    # print(secstruct.head())
+    # print(secstruct.shape)
+
+    # for res in mda_u.residues:
+    #     print(f"Residue {res.resname} {res.resid} has secondary structure: {sse.secondary_structure[res.index]}")
+    # assert False
+    # Calculate SASA using FreeSASA
+    # structure_sasa = freesasa.Structure(destfile)
+    # result = freesasa.calc(structure_sasa)
+
+    # sasa_result, dummy = freesasa.calcBioPDB(structure)
+            
+    # print(
+    #     sasa_result.residueAreas()['A']['1'].polar*sasa_scale,
+    #     sasa_result.residueAreas()['A']['1'].relativePolar,
+    #     sasa_result.residueAreas()['A']['1'].apolar*sasa_scale,
+    #     sasa_result.residueAreas()['A']['1'].relativeApolar,
+    #     sasa_result.residueAreas()['A']['1'].mainChain*sasa_scale,
+    #     sasa_result.residueAreas()['A']['1'].relativeMainChain,
+    #     sasa_result.residueAreas()['A']['1'].sideChain*sasa_scale,
+    #     sasa_result.residueAreas()['A']['1'].relativeSideChain,
+    #     sasa_result.residueAreas()['A']['1'].total*sasa_scale,
+    #     sasa_result.residueAreas()['A']['1'].relativeTotal,
+    #     sasa_result.residueAreas()['A']['1'].residueType,
+    #     sasa_result.residueAreas()['A']['1'].hasRelativeAreas)
+    # print(extract_sasa(sasa_result.residueAreas()))
+    # print(obj.structures)
+    # print(obj.relativePolar(), obj.relativeApolar(),
+    #    obj.relativeMainChain(), obj.elativeSideChain())
+    # print(sasa_result.residueAreas()['A']['1'])
+    data_list = []
+    # Example of extracting CA atoms, requires Bio.PDB and processing
+    for model in structure:
+        for chain in model:
+            chain_id = chain.id
+            assert chain_id in pdb_chain_names, 'Unexpected chain name:' + chain_id + " : " + ','.join(pdb_chain_names)
+            for residue in chain:
+                chain_length = len(chain) # strand name
+                res_name = residue.resname.strip() 
+                if 'CA' in residue:
+                    ca_atom = residue['CA']
+                    residue_id = residue.get_id()[1]  # Getting residue number
+                    rel_residue_id = residue_id/chain_length
+                    log_residue_id = math.log10(residue_id)
+                    log_rev_residue_id = math.log10(chain_length-residue_id+1)
+                    aa_code= seq1(res_name) # one-letter code
+                    b_factor = ca_atom.get_bfactor()
+                    sec = secstruct[(secstruct['ResPdbId']==residue_id) \
+                        & (secstruct['Chain']==chain_id)].reset_index(drop=True)
+                    # print("Accessing chain id, residue id:", chain_id, residue_id, type(residue_id))
+                    # sasa_residue = sasa_result.residueAreas()[chain_id][str(residue_id)]
+                    # polar = sasa_residue.polar*sasa_scale
+                    # rel_polar = sasa_residue.relativePolar
+                    # apolar = sasa_residue.apolar*sasa_scale
+                    # rel_apolar = sasa_residue.relativeApolar
+                    # main_chain = sasa_residue.mainChain*sasa_scale
+                    # rel_main_chain = sasa_residue.relativeMainChain
+                    # side_chain = sasa_residue.sideChain*sasa_scale
+                    # rel_side_chain = sasa_residue.relativeSideChain
+                    # total = sasa_residue.total*sasa_scale
+                    # rel_total = sasa_residue.relativeTotal
+                    # # sasa_residue.residueType
+                    # has_rel_areas = int(sasa_residue.hasRelativeAreas)
+
+                    structured = 1  # Default to structured
+                    # Check if this residue is within any disordered region
+                    if disprot is not None:
+                        disregions = disprot[(disprot['acc'] == acc) & (disprot['start'] <= residue_id) & (disprot['end'] >= residue_id)]
+                        if not disregions.empty:
+                            structured = 0  # Mark as disordered
+                    # sasa = sasa_per_residue[f'residue {chain.id} {residue_id}']
+                    # Append dictionary of data to the list
+                    if len(sec) == 1:
+                        for _, r in sec.iterrows():
+                            aa_size, polarity,charge,hydrophobicity,aromaticity=aa_encoding.get(aa_code,(0,0,0,0,0))
+                            data_list.append({'Accession': acc,
+                                'AACode':aa_code,
+                                'aa_size':aa_size,
+                                'polarity':polarity,
+                                'charge':charge,
+                                'hydrophobicity':hydrophobicity,
+                                'aromaticity':aromaticity,
+                                'Confidence': b_factor/100,
+                                'ResNo': residue_id/100,
+                                'RelResNo':round(rel_residue_id, DIGITS),
+                                'lgResNo':round(log_residue_id,DIGITS),
+                                'lgRevResNo':round(log_rev_residue_id, DIGITS),
+                                'Phi':round(r['Phi']*angle_scale, DIGITS),
+                                'Psi':round(r['Psi']*angle_scale, DIGITS),
+                                'SecStruct':r['StructCode'],
+                                # 'Polar':polar, 'RelPolar':rel_polar,
+                                # 'Apolar':apolar, 'RelApolar':rel_apolar,
+                                # 'MainChain':main_chain, 'RelMainChain':rel_main_chain,
+                                # 'SideChain':side_chain, 'RelSideChain':rel_side_chain,
+                                'TotalArea':round(r['Area']*area_scale, DIGITS),
+                                'structured': structured
+                                })
+                    else:
+                        print("Warning: could not identify secondary structure - is binary of program 'stride' installed? ",
+                            len(sec), res_name, residue_id, chain_id)
+                        if verbose:
+                            print(secstruct.head())
+                            print(secstruct.tail())
+                            print((secstruct['ResPdbId']==residue_id))
+                            print(secstruct['Chain']==chain_id)
+                            print((secstruct['ResPdbId']==residue_id) & (secstruct['Chain']==chain_id))
+                            print(secstruct[(secstruct['ResPdbId']==residue_id) \
+                                & secstruct['Chain']==chain_id].reset_index(drop=True))
+                            print(len(secstruct[(secstruct['ResPdbId']==residue_id) \
+                                & (secstruct['Chain']==chain_id)].reset_index(drop=True)))
+                            
+                        secstruct.to_csv('tmp_secstruct.tsv', sep='\t')
+                        assert False
+    return { 'disorder': pd.DataFrame(data_list)}
+
+
+def structurefile_to_features(pdbfile, 
+    disprot:pd.DataFrame=None, verbose=True,
+    accession="unknown"):
+    """
+    Converts PDB/MMCIF file to a tabular representation of features
+    Wrapper for function structure_to_features
+    """
+    assert pdbfile is not None
+    assert isinstance(pdbfile, str)
+    assert ',' not in pdbfile
+    # Read PDB file
+    parser = PDBParser()
+    structure = parser.get_structure(accession, pdbfile)
+    secstruct:pd.DataFrame = run_stride(pdbfile, 'bin/stride')
+    return structure_to_features(structure, secstruct, disprot=disprot, verbose=verbose)
+
+
 def run_disprot_structure(disprot23,
     n=-1, # max number of accession codes
     no_download=False,
     area_scale = 0.01,
     angle_scale = 0.01, # angles between -1.8 and + 1.8 instead of the pi stuff :-)
-    URL_BASE = "https://alphafold.ebi.ac.uk/files/",
+    base_url = "https://alphafold.ebi.ac.uk/files/",
+    file_template="AF-{acc}-F1-model_v{version}.pdb",
+    file_template2="AF-{acc}-F1-model.pdb",
     scratchdir=os.path.join(INTERIM_DIR, 'afdb'),
     verbose=True):
 
@@ -89,7 +248,10 @@ def run_disprot_structure(disprot23,
         n = len(accessions)
     for acc_iter in range(n):
         acc = accessions[acc_iter]
-        dest_name = f"AF-{acc}-F1-model.pdb"
+
+        dest_name = file_template2.format(acc=acc)
+        assert ',' not in dest_name
+         # f"AF-{acc}-F1-model.pdb"
         destfile = os.path.join(scratchdir, dest_name)
         print(f"Working on accession code {acc} : {acc_iter} out of {n} proteins")
         if not os.path.exists(destfile):
@@ -97,8 +259,11 @@ def run_disprot_structure(disprot23,
                 print(f"deactivated download, have to skip {acc}")
                 continue
             for version in [4,3,2,1]:
-                fname = f"AF-{acc}-F1-model_v{version}.pdb"
-                url = f"{URL_BASE}{fname}"
+                assert isinstance(acc, str)
+                assert isinstance(version, str) or isinstance(version, int)
+                fname = file_template.format(acc=acc, version=version) # f"AF-{acc}-F1-model_v{version}.pdb"
+                assert ',' not in fname
+                url = f"{base_url}{fname}"
                 response = requests.get(url)
                 if response.status_code == 200:
                     with open(destfile, 'wb') as f:
@@ -112,135 +277,11 @@ def run_disprot_structure(disprot23,
                 continue
         else:
             print("Using cached structure at", destfile)
-
-        # Read PDB file
-        parser = PDBParser()
         protein_count += 1
         used_accessions.append(acc)
-        structure = parser.get_structure(acc, destfile)
-        # mda_u = mda.Universe(destfile)
-        # sse = secondary_structure.SegmentSecondaryStructure.Universe(mda_u)
-        # psn = core.PSN("matrix.dat", mda_u)
-        # print(psn)
-        secstruct = run_stride(destfile, 'bin/stride')
-        # print(secstruct.head())
-        pdb_chain_names = secstruct['Chain'].unique()
-        if verbose:
-            print("PDB Chain names:", pdb_chain_names)
-        assert isinstance(secstruct, pd.DataFrame), 'Expected data frame but got ' + str(secstruct) 
-        assert len(secstruct) > 0
-        # print(secstruct.head())
-        # print(secstruct.shape)
-
-        # for res in mda_u.residues:
-        #     print(f"Residue {res.resname} {res.resid} has secondary structure: {sse.secondary_structure[res.index]}")
-        # assert False
-        # Calculate SASA using FreeSASA
-        # structure_sasa = freesasa.Structure(destfile)
-        # result = freesasa.calc(structure_sasa)
-
-        # sasa_result, dummy = freesasa.calcBioPDB(structure)
-                
-        # print(
-        #     sasa_result.residueAreas()['A']['1'].polar*sasa_scale,
-        #     sasa_result.residueAreas()['A']['1'].relativePolar,
-        #     sasa_result.residueAreas()['A']['1'].apolar*sasa_scale,
-        #     sasa_result.residueAreas()['A']['1'].relativeApolar,
-        #     sasa_result.residueAreas()['A']['1'].mainChain*sasa_scale,
-        #     sasa_result.residueAreas()['A']['1'].relativeMainChain,
-        #     sasa_result.residueAreas()['A']['1'].sideChain*sasa_scale,
-        #     sasa_result.residueAreas()['A']['1'].relativeSideChain,
-        #     sasa_result.residueAreas()['A']['1'].total*sasa_scale,
-        #     sasa_result.residueAreas()['A']['1'].relativeTotal,
-        #     sasa_result.residueAreas()['A']['1'].residueType,
-        #     sasa_result.residueAreas()['A']['1'].hasRelativeAreas)
-        # print(extract_sasa(sasa_result.residueAreas()))
-        # print(obj.structures)
-        # print(obj.relativePolar(), obj.relativeApolar(),
-        #    obj.relativeMainChain(), obj.elativeSideChain())
-        # print(sasa_result.residueAreas()['A']['1'])
-
-        # Example of extracting CA atoms, requires Bio.PDB and processing
-        for model in structure:
-            for chain in model:
-                chain_id = chain.id
-                assert chain_id in pdb_chain_names, 'Unexpected chain name:' + chain_id + " : " + ','.join(pdb_chain_names)
-                for residue in chain:
-                    chain_length = len(chain) # strand name
-                    res_name = residue.resname.strip() 
-                    if 'CA' in residue:
-                        ca_atom = residue['CA']
-                        residue_id = residue.get_id()[1]  # Getting residue number
-                        rel_residue_id = residue_id/chain_length
-                        log_residue_id = math.log10(residue_id)
-                        log_rev_residue_id = math.log10(chain_length-residue_id+1)
-                        aa_code= seq1(res_name) # one-letter code
-                        b_factor = ca_atom.get_bfactor()
-                        sec = secstruct[(secstruct['ResPdbId']==residue_id) \
-                            & (secstruct['Chain']==chain_id)].reset_index(drop=True)
-                        # print("Accessing chain id, residue id:", chain_id, residue_id, type(residue_id))
-                        # sasa_residue = sasa_result.residueAreas()[chain_id][str(residue_id)]
-                        # polar = sasa_residue.polar*sasa_scale
-                        # rel_polar = sasa_residue.relativePolar
-                        # apolar = sasa_residue.apolar*sasa_scale
-                        # rel_apolar = sasa_residue.relativeApolar
-                        # main_chain = sasa_residue.mainChain*sasa_scale
-                        # rel_main_chain = sasa_residue.relativeMainChain
-                        # side_chain = sasa_residue.sideChain*sasa_scale
-                        # rel_side_chain = sasa_residue.relativeSideChain
-                        # total = sasa_residue.total*sasa_scale
-                        # rel_total = sasa_residue.relativeTotal
-                        # # sasa_residue.residueType
-                        # has_rel_areas = int(sasa_residue.hasRelativeAreas)
-
-                        structured = 1  # Default to structured
-                        # Check if this residue is within any disordered region
-                        disregions = disprot23[(disprot23['acc'] == acc) & (disprot23['start'] <= residue_id) & (disprot23['end'] >= residue_id)]
-                        if not disregions.empty:
-                            structured = 0  # Mark as disordered
-                        # sasa = sasa_per_residue[f'residue {chain.id} {residue_id}']
-                        # Append dictionary of data to the list
-                        if len(sec) == 1:
-                            for _, r in sec.iterrows():
-                                aa_size, polarity,charge,hydrophobicity,aromaticity=aa_encoding.get(aa_code,(0,0,0,0,0))
-                                data_list.append({'Accession': acc,
-                                    'AACode':aa_code,
-                                    'aa_size':aa_size,
-                                    'polarity':polarity,
-                                    'charge':charge,
-                                    'hydrophobicity':hydrophobicity,
-                                    'aromaticity':aromaticity,
-                                    'Confidence': b_factor/100,
-                                    'ResNo': residue_id/100,
-                                    'RelResNo':round(rel_residue_id, DIGITS),
-                                    'lgResNo':round(log_residue_id,DIGITS),
-                                    'lgRevResNo':round(log_rev_residue_id, DIGITS),
-                                    'Phi':round(r['Phi']*angle_scale, DIGITS),
-                                    'Psi':round(r['Psi']*angle_scale, DIGITS),
-                                    'SecStruct':r['StructCode'],
-                                    # 'Polar':polar, 'RelPolar':rel_polar,
-                                    # 'Apolar':apolar, 'RelApolar':rel_apolar,
-                                    # 'MainChain':main_chain, 'RelMainChain':rel_main_chain,
-                                    # 'SideChain':side_chain, 'RelSideChain':rel_side_chain,
-                                    'TotalArea':round(r['Area']*area_scale, DIGITS),
-                                    'structured': structured
-                                    })
-                        else:
-                            print("Warning: could not identify secondary structure - is binary of program 'stride' installed? ",
-                                len(sec), res_name, residue_id, chain_id)
-                            if verbose:
-                                print(secstruct.head())
-                                print(secstruct.tail())
-                                print((secstruct['ResPdbId']==residue_id))
-                                print(secstruct['Chain']==chain_id)
-                                print((secstruct['ResPdbId']==residue_id) & (secstruct['Chain']==chain_id))
-                                print(secstruct[(secstruct['ResPdbId']==residue_id) \
-                                    & secstruct['Chain']==chain_id].reset_index(drop=True))
-                                print(len(secstruct[(secstruct['ResPdbId']==residue_id) \
-                                    & (secstruct['Chain']==chain_id)].reset_index(drop=True)))
-                                
-                            secstruct.to_csv('tmp_secstruct.tsv', sep='\t')
-                            assert False
+        accession_result = structurefile_to_features(destfile, disprot=disprot23)['disprot']
+        for idx, row in accession_result.iterrows():
+            data_list.append(row)
 
     return {'disorder':pd.DataFrame(data_list),
         'accessions':used_accessions}

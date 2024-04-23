@@ -150,7 +150,7 @@ def read_csv_if_string(df, sep=None):
     return df
 
 
-def main(df_test, model_file, scaler_file=None,
+def run_disorder_prediction(df_test, model_file, scaler_file=None,
     window_size=17,
     model_name='dense',
     shuffle_columns=False, # can be a list of column names
@@ -254,7 +254,7 @@ def run_main_test_all(
                     print("Warning: could not find model file at", model_file)
                     continue
                 try:
-                    main(df_test=test_file,model_name=model_name, model_file=model_file,
+                    run_disorder_prediction(df_test=test_file,model_name=model_name, model_file=model_file,
                     window_size=window_size,
                     shuffle_columns=shuffle_columns)
                 except Exception as e:

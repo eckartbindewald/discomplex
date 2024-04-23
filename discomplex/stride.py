@@ -173,12 +173,20 @@ def test_parse_stride(text=STRIDE_EXAMPLE):
     print(result.columns)
 
 
-def run_stride(pdbfile:str, stride_binary='stride') -> pd.DataFrame:
+def run_stride(pdbfile:str, stride_binary='stride', verbose=True) -> pd.DataFrame:
     """
     Runs STRIDE program on a PDB file and returns
     a data frame with the protein secondary structure
     """
+    assert ',' not in pdbfile
+    assert '(' not in pdbfile
     command = [stride_binary, pdbfile]
+    joined_command = ' '.join(command)
+    assert ',' not in joined_command
+    assert '(' not in joined_command
+    if verbose:
+        print("Stride command:")
+        print(" ".join(command))
     try:
         result_text = subprocess.check_output(command, text=True)
         result = parse_stride(result_text)
