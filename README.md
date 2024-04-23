@@ -19,6 +19,15 @@ pipenv install
 
 ## Configuration
 
+## Install HHSuite
+
+For detailed installation instructions for HHSuite see <https://github.com/soedinglab/hh-suite>
+
+```
+conda install -c conda-forge -c bioconda hhsuite 
+
+```
+
 ### API Key
 
 To use the bioml.ai API for protein folding predictions, you need to set your API key in a `.env` file:
@@ -94,5 +103,16 @@ Run these scripts with appropriate arguments to perform the analyses.
 The scripts generate various output files, including PDB structures, interaction predictions, and intermediate data files.
 
 ## Additional Information
+
+
+### Sequence seqarch and Use of hhsuite
+
+The basic command for sequence search with hhblitz is:
+
+ `hhblits -i fixtures/P03265.fa -o tmp.txt -oa3m tmp.a3m -d raw/hhsuite/pfam`
+
+Instead of PFAM domains one can consider additional prepared databases (BFD, UniClust etc) , see <https://github.com/soedinglab/hh-suite?tab=readme-ov-file>
+
+
 
 For more details on the individual functions and their parameters, refer to the docstrings provided within the scripts.
